@@ -37,16 +37,32 @@ use POE qw( Kernel
 
 use Carp qw( carp croak );
 
-*VERSION = \0.052;
+*VERSION = \0.0521;
 
 our $VERSION;
 BEGIN { 
     unless (defined &DEBUG) {
         constant->import(DEBUG => 0);
     }
-    else {
-        print "TCPMulti: DEBUG MODE ENABLED";
+    unless (defined &TRACE_EVENTS) {
+        constant->import(TRACE_EVENTS => 0);
     }
+    unless (defined &TRACE_CONNECT) {
+        constant->import(TRACE_CONNECT => 0);
+    }
+    unless (defined &TRACE_FILENAME) {
+        constant->import(TRACE_FILENAME => 0);
+    }
+}
+
+if (DEBUG) {
+    print "TCPMulti: DEBUG MODE ENABLED\n";
+}
+if (TRACE_FILENAME) {
+    open TRACE, ">", TRACE_FILENAME;
+}
+else {
+    *TRACE = *STDERR;
 }
 
 # Heap is now package global.  This is fine, each wheel throughout the POE
@@ -58,7 +74,7 @@ BEGIN {
 # the changelog.  Its only with strange combinations of lexicals anonymous
 # subroutines and anonymous hashrefs (As commonly used in POE
 # programming...bastards :P)
-our %Heap;
+our %heap;
 
 # }}}
 # new (Depriciated) {{{
@@ -72,11 +88,11 @@ sub create {
     # Initialization {{{
 
     shift if $_[0] eq __PACKAGE__;
-    my ($Code, %UserCode);
+    my ($code, %user_code);
 
-    %UserCode = @_;
+    %user_code = @_;
 
-    $UserCode{$_} ||= sub {} for qw( ErrorEvent
+    $user_code{$_} ||= sub {} for qw( ErrorEvent
                                      InputEvent
                                      Initialize
                                      Disconnected
@@ -85,52 +101,52 @@ sub create {
                                      FailureEvent
                                      TimeoutEvent );
 
-    $UserCode{Timeout}        ||= 30;
-    $UserCode{ConnectTimeout} ||= $UserCode{Timeout};
-    $UserCode{InputTimeout}   ||= 300;
-    $UserCode{Filter}         ||= "POE::Filter::Line";
-    $UserCode{FilterArgs}     ||= undef;
-    $UserCode{options}        ||= {};
-    $UserCode{package_states} ||= [];
-    $UserCode{object_states}  ||= [];
+    $user_code{Timeout}        ||= 30;
+    $user_code{ConnectTimeout} ||= $user_code{Timeout};
+    $user_code{InputTimeout}   ||= 300;
+    $user_code{Filter}         ||= "POE::Filter::Line";
+    $user_code{FilterArgs}     ||= undef;
+    $user_code{options}        ||= {};
+    $user_code{package_states} ||= [];
+    $user_code{object_states}  ||= [];
 
-    if (ref $UserCode{Filter} eq "ARRAY") {
-        my @FilterData = @{ delete $UserCode{Filter} };
-        $UserCode{Filter} = shift @FilterData;
-        $UserCode{FilterArgs} = \@FilterData;
+    if (ref $user_code{Filter} eq "ARRAY") {
+        my @FilterData = @{ delete $user_code{Filter} };
+        $user_code{Filter} = shift @FilterData;
+        $user_code{FilterArgs} = \@FilterData;
     }
 
-    @{ $UserCode{UserStates} }{ qw( _start _stop _child ) } =
-        delete @{ $UserCode{inline_states} }{ qw( _start _stop _child ) };
+    @{ $user_code{UserStates} }{ qw( _start _stop _child ) } =
+        delete @{ $user_code{inline_states} }{ qw( _start _stop _child ) };
 
     # }}}
     # Internal States {{{
-    $Code = {
+    $code = {
         # Session Events {{{
         #   _start:     Session Start {{{
 
         _start      => sub {
-            $_[KERNEL]->alias_set( delete $UserCode{Alias} ) 
-                if defined $UserCode{Alias};
+            $_[KERNEL]->alias_set( delete $user_code{Alias} ) 
+                if defined $user_code{Alias};
     
-            $UserCode{UserStates}->{_start}->(@_)
-                if ref $UserCode{UserStates}->{_start} eq "CODE";
+            $user_code{UserStates}->{_start}->(@_)
+                if ref $user_code{UserStates}->{_start} eq "CODE";
         },
     
         #   }}}
         #   _child:     Session Child {{{
 
         _child      => sub {
-            $UserCode{states}->{_child}->(@_)
-                if ref $UserCode{UserStates}->{_child} eq "CODE";
+            $user_code{states}->{_child}->(@_)
+                if ref $user_code{UserStates}->{_child} eq "CODE";
         },
     
         #   }}}
         #   _stop:      Session End {{{
 
         _stop       => sub {
-            $UserCode{UserStates}->{_stop}->(@_)
-                if ref $UserCode{UserStates}->{_stop} eq "CODE";
+            $user_code{UserStates}->{_stop}->(@_)
+                if ref $user_code{UserStates}->{_stop} eq "CODE";
         },
     
         #   }}}
@@ -139,49 +155,55 @@ sub create {
         #   -success:       Connection was successful (Internal) {{{
 
         -success       => sub {
-            my ($handle, $old_id) = @_[ARG0, ARG3];
+            my ($kernel, $handle, $old_id) = @_[KERNEL, ARG0, ARG3];
             my $filter;
     
             # We need 1 filter per Wheel...yeah
-            if (ref $UserCode{Filter} && 
-                    UNIVERSAL::isa($UserCode{Filter}, "UNIVERSAL")) {
-                $filter = $UserCode{Filter} = ref $UserCode{Filter};
+            if (ref $user_code{Filter} && 
+                    UNIVERSAL::isa($user_code{Filter}, "UNIVERSAL")) {
+                $filter = $user_code{Filter} = ref $user_code{Filter};
             }
 
-            $filter = $UserCode{Filter}->new( @{ $UserCode{FilterArgs} } );
+            $filter = $user_code{Filter}->new( @{ $user_code{FilterArgs} } );
 
-            $Heap{$old_id}{-SERVER} = POE::Wheel::ReadWrite->new
+            $heap{$old_id}{-SERVER} = POE::Wheel::ReadWrite->new
                 ( Handle        => $handle,
                   Driver        => POE::Driver::SysRW->new(BlockSize => 4096),
                   Filter        => $filter,
                   InputEvent    => '-incoming',
                   ErrorEvent    => '-error',
-                  FlushedEvent  => '-flushed' );
+#                 FlushedEvent  => '-flushed',
+                  );
 
             # Transfer entire heap (including wheel), reinstate -ID
-            my $new_id = $Heap{$old_id}{-SERVER}->ID;
-            $Heap{$new_id} = delete $Heap{$old_id};
+            my $new_id = $heap{$old_id}{-SERVER}->ID;
+            my $cheap  = $heap{$new_id} = delete $heap{$old_id};
 
-            bless $Heap{$new_id}, "POE::Component::Client::TCPMulti::CHEAP";
+            bless $heap{$new_id}, "POE::Component::Client::TCPMulti::CHEAP";
 
             # ARG4 differs from Wheel definition...its our new id.
-            push @_, $new_id, $Heap{$new_id};
+            push @_, $new_id, $cheap;
 
-            $_[CHEAP]{-ID} = $new_id;
-            $_[CHEAP]{-TIMEOUT} = $UserCode{InputTimeout};
+            $cheap->{-ID} = $new_id;
+            $cheap->{-TIMEOUT} = $user_code{InputTimeout};
 
-            if ($UserCode{InputTimeout}) {
-                $_[KERNEL]->delay_adjust
-                    ( $_[CHEAP]{-ALARM}, $_[CHEAP]{-TIMEOUT} );
+            if ($user_code{InputTimeout}) {
+                if ($cheap->{-ALARM}) {
+                    DEBUG && printf "%d << Adjusting alarm %d (%d s)\n",
+                        $new_id, @{ $_[CHEAP] }{qw( -ALARM -TIMEOUT )};
+                    $kernel->delay_adjust
+                        ( $cheap->{-ALARM}, $cheap->{-TIMEOUT} );
+                }
             }
-            else {
-                $_[KERNEL]->alarm_remove( delete $_[CHEAP]{-ALARM} );
+            # We should have an alarm ID -> maybe we're not storing it.
+            elsif ($cheap->{-ALARM}) {
+                $kernel->alarm_remove( delete $cheap->{-ALARM} );
             }
 
-            $UserCode{SuccessEvent}->(@_);
+            $user_code{SuccessEvent}->(@_);
     
-            printf '%d == Successfull Connection %s:%d\n', $new_id,
-                @{ $Heap{$new_id} }{qw( -ADDR -PORT )} if DEBUG;
+            printf "%d == Successfull Connection %s:%d\n", $new_id,
+                @{ $heap{$new_id} }{qw( -ADDR -PORT )} if DEBUG;
         },
     
         #   }}}
@@ -196,22 +218,30 @@ sub create {
 
             my ($address, $port, $bindaddress, $bindport) = @_[ARG0..ARG3];
 
+            printf TRACE "connect event invoked (%s, %d) for %s from %s:%d\n",
+                   @_[ ARG0, ARG1 ], 
+                   $cheap->{email},  # email para poeml lang
+                   @_[ CALLER_FILE, CALLER_LINE ] if TRACE_CONNECT;
+
             unless (defined $address) {
                 return printf STDERR   
                     "connect called without address or port, %s: line %d\n",
                     @_[CALLER_FILE, CALLER_LINE];
             }
+
+            printf STDERR "!!! !! connect state invoked from %s:%d\n",
+                   @_[CALLER_FILE, CALLER_LINE] if DEBUG;
             
             push @_, POE::Component::Client::TCPMulti->connect
                 ( RemoteAddress => $address,
                   RemotePort    => $port,
                   BindAddress   => $bindaddress,
                   BindPort      => $bindport,
-                  Timeout       => $UserCode{ConnectTimeout},
+                  Timeout       => $user_code{ConnectTimeout},
                   Heap          => $cheap,
                 );
 
-            $UserCode{Initialize}->(@_);
+            $user_code{Initialize}->(@_);
         }, 
     
         #   }}}
@@ -220,35 +250,40 @@ sub create {
         #   -incoming:      Handling recieved data (Internal) {{{
     
         -incoming  => sub {
-            push @_, $Heap{$_[ARG1]};
-            return unless $_[CHEAP]{-RUNNING};
+            my ($kernel, $id) = @_[ KERNEL, ARG1 ];
+            push @_, $heap{$id};
+
+            my $cheap = $_[ CHEAP ];
+            return unless $cheap->{-RUNNING};
 
             if (DEBUG) {
                 print "$_[ARG1] << $_[ARG0]\n";
             }
 
-            if ($_[CHEAP]{-TIMEOUT}) {
-                $_[KERNEL]->delay_adjust
-                    ( $_[CHEAP]{-ALARM}, $_[CHEAP]{-TIMEOUT} );
+            if ($cheap->{-TIMEOUT}) {
+                $kernel->delay_adjust
+                    ( $cheap->{-ALARM}, $cheap->{-TIMEOUT} );
             }
 
-            $UserCode{InputEvent}(@_);
+            $user_code{InputEvent}(@_);
         },
 
         #   }}}
         #   send:           Send Data {{{
 
         send        => sub {
+            my $cheap = $heap{$_[ARG0]};
+
             unless (defined $_[ARG1]) {
                 return printf STDERR  
                     "send called without socket or data %s: line %d\n",
                     @_[CALLER_FILE, CALLER_LINE];
             }
-            elsif (defined $Heap{$_[ARG0]}{-SERVER}) {
+            elsif (defined $cheap->{-SERVER}) {
                 if (DEBUG) {
                     print "$_[ARG0] >> $_[ARG1]\n";
                 }
-                $Heap{$_[ARG0]}{-SERVER}->put( @_[ARG1 .. $#_] );
+                $cheap->{-SERVER}->put( @_[ARG1 .. $#_] );
             } 
         },
 
@@ -261,15 +296,15 @@ sub create {
             printf "%d !! Disconnected - Failed (%s)\n", $_[ARG3], $_[ARG2] 
                 if DEBUG;
 
-            push @_, $Heap{$_[ARG3]};
-            $UserCode{FailureEvent}->(@_);
+            push @_, $heap{$_[ARG3]};
+            $user_code{FailureEvent}->(@_);
 
 #           Redundant ( This is done in shutdown )
 #            delete $_[CHEAP];
-#            delete $Heap{$_[ARG3]}{-SERVER};
+#            delete $heap{$_[ARG3]}{-SERVER};
 
             $_[ARG0] = $_[ARG3];
-            $Code->{shutdown}->(@_);
+            $code->{shutdown}->(@_);
         },
     
         #   }}}
@@ -278,16 +313,15 @@ sub create {
         -error     => sub { 
             printf "%d !! Disconnected - Error\n", $_[ARG3] if DEBUG;
     
-            $#_++;
-            $_[CHEAP] = $Heap{$_[ARG3]};
-            $UserCode{ErrorEvent}->(@_);
+            push @_, $heap{$_[ARG3]};
+            $user_code{ErrorEvent}->(@_);
     
 #           Redundant
 #            delete $_[CHEAP];
-#            delete $Heap{$_[ARG3]}{-SERVER};
+#            delete $heap{$_[ARG3]}{-SERVER};
     
             $_[ARG0] = $_[ARG3];
-            $Code->{shutdown}->(@_);
+            $code->{shutdown}->(@_);
         }, 
     
         #   }}}
@@ -299,18 +333,21 @@ sub create {
 
         -timeout   => sub {
 # 20050330: timeouts aren't getting cleaned up!            
-#            if ($Heap{$_[ARG0]}{-RUNNING}) {
+#            if ($heap{$_[ARG0]}{-RUNNING}) {
                 printf "%d ** Disconnected - Timeout\n", $_[ARG0] if DEBUG;
     
-                $#_++;
-                $_[CHEAP] = $Heap{$_[ARG0]};
-                $UserCode{TimeoutEvent}->(@_);
+                push @_, delete $heap{$_[ARG0]};
+
+                $user_code{TimeoutEvent}->(@_);
+
+                $user_code{Disconnected}->(@_);
+
+                # Just incase the cheap hangs around clean up the wheel
+                delete $_[CHEAP]->{-SERVER};
+                delete $_[CHEAP];
     
-#               Redundant
-#                delete $_[CHEAP];
-#                delete $Heap{$_[ARG0]}->{-SERVER};
-    
-                $Code->{shutdown}->(@_);
+#               kase sabi ito dalawa ng
+#               $code->{shutdown}->(@_);
 #            }
         },
     
@@ -320,62 +357,67 @@ sub create {
         #   -flushed:       Empty Socket (Internal) {{{
 
         # flush - our socket is empty - Direct call is faster and fits reqs.
-        -flushed   => sub {
-            unless ($Heap{$_[ARG0]}{-RUNNING}) {
-                $Code->{shutdown}->(@_);
-            } 
-        },
+#       -flushed   => sub {
+#           unless ($heap{$_[ARG0]}{-RUNNING}) {
+#               $code->{shutdown}->(@_);
+#           } 
+#       },
     
         #   }}}
         #   shutdown:       Handle Socket Shutdown {{{
 
         # Shutdown... push onto queue if not sent, delete driver.
         shutdown	=> sub {
-            unless (defined $_[ARG0]) {
+            my ($kernel, $id) = @_[ KERNEL, ARG0 ];
+
+            unless (defined $id) {
                 return printf STDERR  
                     "shutdown called without CHEAP id %s: line %d\n",
                     @_[CALLER_FILE, CALLER_LINE];
             }
-
-            if ($Heap{$_[ARG0]}{-RUNNING}) {
-                # Remove Alarm
-                $_[KERNEL]->alarm_remove ( $Heap{$_[ARG0]}{-ALARM} );
-    
-                $Heap{$_[ARG0]}->{-RUNNING} = 0;
-                delete $Heap{$_[ARG0]}{-ALARM};
+            unless (exists $heap{$id}) {
+                die "$_[ARG0]: Socket doesn't exist?";
             }
 
-            if (defined $Heap{$_[ARG0]}{-SERVER}) {
-                if ($Heap{$_[ARG0]}{-SERVER}->can("get_driver_out_octets")) {
-                    unless ($Heap{$_[ARG0]}{-SERVER}->get_driver_out_octets) {
+
+            push @_, my $cheap = delete $heap{$id};
+
+            $cheap->{-RUNNING} = 0;
+
+# Shutdown is now impolite.            
+#           if (defined $heap{$_[ARG0]}{-SERVER}) {
+#               if ($heap{$_[ARG0]}{-SERVER}->can("get_driver_out_octets")) {
+#                   unless ($heap{$_[ARG0]}{-SERVER}->get_driver_out_octets) {
                         printf "%d -- Disconnected - Closed\n", $_[ARG0] 
                             if DEBUG;
     
-                        unless (exists $Heap{$_[ARG0]}) {
-                            die "$_[ARG0]: Socket doesn't exist?";
-                        }
+                        # Remove Alarm, tanga ko ba!? 
+                        $kernel->alarm_remove 
+                            ( delete $cheap->{-ALARM} );
 
-                        push @_, $Heap{$_[ARG0]};
-                        $UserCode{Disconnected}->(@_);
+                        $user_code{Disconnected}->(@_);
                         
                         # Blow shit up
                         delete $_[CHEAP];
-                        delete $Heap{$_[ARG0]};
-                    }
+#                   }
     
                     # Its either gone and we're out of synch (shouldn't happen),
                     # or we want to wait for a clean shutdown.
                     return;
-                } 
-            }
-            else {
-                # XXX Just a test
-                delete $_[CHEAP];
-                delete $Heap{$_[ARG0]};
-            }
+#               } 
+#           }    
+            # Our wheel is dead if we didn't return above.
+            # This is kind of redundant, but much of this module is.
+            $_[KERNEL]->alarm_remove ( delete $heap{$_[ARG0]}{-ALARM} );
+
+            push @_, $heap{$_[ARG0]};
+            $user_code{Disconnected}->(@_);
+    
+            delete $_[CHEAP];
+            delete $heap{$_[ARG0]};
     
 # Don't do this unless we're flushed...
-# delete $Heap{$_[ARG0]};
+# delete $heap{$_[ARG0]};
         },
     
         #   }}}
@@ -383,7 +425,7 @@ sub create {
         # Shutdown quick, clean and gracefull. 
 
         die         => sub {
-            $_[KERNEL]->call(shutdown => $_) for keys %Heap;
+            $_[KERNEL]->call(shutdown => $_) for keys %heap;
             $_[KERNEL]->alias_remove($_) for $_[KERNEL]->alias_list;
             $_[KERNEL]->alarm_remove_all;
         },
@@ -395,11 +437,11 @@ sub create {
     # Session Constructor {{{
 
     POE::Session->create
-        ( inline_states => { %{ delete $UserCode{inline_states} }, %$Code },
-          object_states     => delete $UserCode{object_states},
-          package_states    => delete $UserCode{package_states},
-          options           => delete $UserCode{options},
-          args              => delete $UserCode{args},
+        ( inline_states => { %{ delete $user_code{inline_states} }, %$code },
+          object_states     => delete $user_code{object_states},
+          package_states    => delete $user_code{package_states},
+          options           => delete $user_code{options},
+          args              => delete $user_code{args},
         );
 
     # }}}
@@ -411,6 +453,10 @@ sub create {
 sub connect {
     my %Options = @_[1..$#_];
     $Options{Heap} ||= {};
+
+    printf STDERR "!!! -> connect method called from %s:%d\n",
+           (caller)[1,2] if DEBUG;
+
 
     my $server = POE::Wheel::SocketFactory->new
         ( RemoteAddress => $Options{RemoteAddress},
@@ -424,7 +470,11 @@ sub connect {
     
     my $id = $server->ID; 
 
-    $Heap{$id} = bless {
+    printf TRACE "->connect(count %d, id %d, host (%s:%d) %s:%d);\n",
+           scalar keys %heap, $id, @Options{qw( RemoteAddress RemotePort )},
+           (caller)[1,2] if TRACE_CONNECT;
+
+    $heap{$id} = bless {
         %{ $Options{Heap} },
         -ID         => $server->ID,
         -ADDR       => $Options{RemoteAddress},
@@ -437,18 +487,18 @@ sub connect {
         -STAMP      => time,
     }, __PACKAGE__ . "::CHEAP";
     
-    if ($Heap{$id}{-TIMEOUT}) {
-        $Heap{$id}{-ALARM}  = $poe_kernel->delay_add
-            ( -timeout => $Heap{$id}{-TIMEOUT}, $id);
+    if ($heap{$id}{-TIMEOUT}) {
+        $heap{$id}{-ALARM}  = $poe_kernel->delay_set
+            ( -timeout => $heap{$id}{-TIMEOUT}, $id, $heap{$id}{email});
     }
     else {
-        $Heap{$id}{-ALARM} = 0;
+        $heap{$id}{-ALARM} = 0;
     }
 
-    printf "%d ++ Connecting %s:%d \n", $id, @{ $Heap{$id} }{qw( -ADDR -PORT )}
+    printf "%d ++ Connecting %s:%d \n", $id, @{ $heap{$id} }{qw( -ADDR -PORT )}
         if DEBUG;
 
-    return $Heap{$id};
+    return $heap{$id};
 }
 
 # }}}

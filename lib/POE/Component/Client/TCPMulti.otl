@@ -142,8 +142,9 @@ Event Parameters
 		| The connections unique id (synonymous with $_[CHEAP]->ID)
 	- Disconnected
 	| Disconnected takes a CODE reference, and is the event taht will be called
-	| after a shutdown event was succesfull.  This only affects connection
-	| closures requested by your program.
+	| after a shutdown event was succesfull.  This will happen for any type of
+	| disconnection or connection failure, as the shutdown routine is used not
+	| only to close a connection but to clean up after it as well.
 	- TimeoutEvent
 	| TimeoutEvent takes a CODE reference, and is the event that will be called
 	| when a connection has been idle for longer than the specified value of

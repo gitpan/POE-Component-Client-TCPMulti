@@ -1,4 +1,16 @@
 ------------------------------------------------------------------------
+r206 | tag | 2005-03-31 22:16:26 -0800 (Thu, 31 Mar 2005) | 2 lines
+
+MANIFEST.bak: REMOVED (generated)
+
+------------------------------------------------------------------------
+r205 | tag | 2005-03-31 22:14:14 -0800 (Thu, 31 Mar 2005) | 4 lines
+
+lib/POE/Component/Client/TCPMulti.pm:
+    - Memory leaks fixed
+    - Disconnected events happens in every instance
+
+------------------------------------------------------------------------
 r204 | tag | 2005-03-25 01:12:59 -0800 (Fri, 25 Mar 2005) | 2 lines
 
 POE-Component-Client-TCPMulti-0.019.tar.gz: Removed generated release

@@ -18,14 +18,9 @@ document:
 			print "Converting $$File::Find::name to $$pod"; \
 			system("otl2pod $$_ > $$pod"); \
 		} } }, "lib";'
-changes:        
-	svn log > CHANGES
-
-upload:
-	/usr/bin/cpan-upload -user tag -mailto tag@cpan.org \
-		$(DISTNAME)-$(VERSION).tar.gz
+upload: document dist
+	cpan-upload -mailto tag@cpan.org -user tag $(DISTNAME)-$(VERSION).tar.gz
 	 );
-
 }
 
 WriteMakefile
