@@ -25,10 +25,11 @@ my %Opt;
 my @Ports;
 my @Open;
 my %Service;
+my $Timestamp;
 my $Address;
 my $EOF;
 
-getopts "dvp:s:v:x:t:b:", \%Getopts;
+getopts "Sdvp:s:v:x:t:b:", \%Getopts;
 
 # Legibility ROCKS!
 @Opt{qw( Range Address Verbose Timeout Services 
@@ -43,7 +44,9 @@ my ($R_Start, $R_End) = split /-/, $Opt{Range};
 unless ($Opt{Services}) {
     open SERVICES, "<", "/etc/services";
     while (<SERVICES>) {
-        $Service{$2} = $1 if m!^(\w+)\s+(\d+)/tcp!;
+        if (my ($name, $port) = m[^(\w+)\s+(\d+)/tcp]) {
+            $Service{$port} = $name;
+        }
     }
     close SERVICES;
 }
@@ -72,7 +75,8 @@ sub InputHandle {
 
 # Sessions----------------------------------------------------------------------
 POE::Component::Client::TCPMulti->new
-( Timeout       => $Opt{Timeout},
+( ConnectTimeout => $Opt{Timeout},
+  InputTimeout   => $Opt{Timeout},
 
   InputEvent    => \&InputHandle,
 
@@ -85,9 +89,11 @@ POE::Component::Client::TCPMulti->new
   Alias         => "Main",
   inline_states => {
     _start => sub {
+        $Timestamp = time;
         if ($Opt{Verbose}) {
             printf "Starting Scan: %s\n", $Opt{Address};
             printf "Scanning Port range: %s\n", $Opt{Range};
+            printf "Using %d concurrent connections\n", $Opt{Threads};
         }
 
         $_[HEAP]->{Running}++;
@@ -109,6 +115,7 @@ POE::Component::Client::TCPMulti->new
     },
     _stop => sub {
         printf "\nSummary for: %s\n", $Opt{Address};
+
         for my $Port (@Open) {
             unless ($Opt{Services}) {
                 $Service{$Port} ||= "Unknown";
@@ -119,6 +126,14 @@ POE::Component::Client::TCPMulti->new
                 printf "Open Port:   %6d\n", $Port;
             } 
         }
+
+        unless (@Open) {
+            print "Scan returned nothing";
+        }
+
+        printf "Scan completed in: %ds\n", time - $Timestamp;
+        printf "Connections per second: %d\n", ($R_End / (time - $Timestamp));
+
         $_[HEAP]->{Running} = 0;
     },
   }
@@ -135,7 +150,16 @@ __DATA__
 
 =head1 SYNPOSIS
 
- ./portscan.pl [ -vdS ] [ -t <sockets> ] [ -p <port-range> ] [ -s <Address> ]
-               [ -x <timeout> ]  
+ ./portscan.pl [ -vdS ] [ -t <sockets> ] [ -p <port-range> ] 
+               [ -s <Address> ] [ -x <timeout> ]  
+
+=head1 INTRODUCTION
+
+portscan.pl is simply a primitave port scanner.  It sequentially opens
+up all of the ports in the optionally specified range, on the optionally
+speicified address, and closes them on success.  Once it finishes, and
+all ports have either been opened, timed out, or errored it creates a list
+of all of the ports of which the connection was successful, and thier
+correlated service as listed in /etc/services.
 
 =cut               

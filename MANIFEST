@@ -1,9 +1,11 @@
 CHANGES
-MANIFEST
-MANIFEST.SKIP
+examples/pocoscan.pl
+lib/POE/Component/Client/TCPMulti.otl
+lib/POE/Component/Client/TCPMulti.pm
+lib/POE/Component/Client/TCPMulti.pod
 Makefile.PL
-TCPMulti.pm
-TODO
-pocoscan.pl
-portscan.pl
+MANIFEST			This list of files
+MANIFEST.SKIP
+META.yml
 t/01_use.t
+TODO

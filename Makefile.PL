@@ -1,21 +1,43 @@
 #!/usr/bin/perl
-# $Id: Makefile.PL,v 1.6 2002/09/10 03:30:51 rcaputo Exp $
 
+use strict;
+use warnings FATAL => "all";
 use ExtUtils::MakeMaker;
 
 # Touch CHANGES so it exists.
-open(CHANGES, ">>CHANGES") and close CHANGES;
+open CHANGES, ">>CHANGES" and close CHANGES;
+
+# Dont laugh!
+sub MY::postamble { 
+	q(
+document:
+	$(NOECHO) $(PERLRUN) "-MFile::Find"                       \
+	 -le 'find { wanted => sub { if (m/otl$$/) { \
+	 		my $$pod = $$_; \
+			$$pod =~ s/otl/pod/; \
+			print "Converting $$File::Find::name to $$pod"; \
+			system("otl2pod $$_ > $$pod"); \
+		} } }, "lib";'
+	 );
+}
 
 WriteMakefile
   ( NAME         => 'POE::Component::Client::TCPMulti',
     AUTHOR       => 'Scott S. McCoy (tag@cpan.org)',
     ABSTRACT     => 'POE component for High Connectivity TCP Clients',
-    VERSION_FROM => 'TCPMulti.pm',
+    VERSION_FROM => 'lib/POE/Component/Client/TCPMulti.pm',
 
-    PM           => { 'TCPMulti.pm' => '$(INST_LIBDIR)/TCPMulti.pm' },
+#    PM           => 
+#    { 'lib/POE/Component/Client/TCPMulti.pm' => '$(INST_LIBDIR)/lib/POE/Component/Client/TCPMulti.pm' },
+#	MAN3PODS	 =>
+#	{ 'TCPMulti.pod' => '$(INST_MAN3DIR)/POE::Component::Client::TCPMulti' },
+
+	PMLIBDIRS	 => ['lib'], # This is to make the autopodfinder shit work.
+
     PREREQ_PM    => { POE      => 0.11 },
     dist         =>
-    { COMPRESS   => 'gzip -9f',
+    { DIST_DEFAULT => "tardist document",
+	  COMPRESS   => 'gzip -9f',
       SUFFIX     => 'gz',
       PREOP      => ( 'svn log | ' .
                       'tee ./$(DISTNAME)-$(VERSION)/CHANGES > ./CHANGES'
