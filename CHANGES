@@ -1,0 +1,96 @@
+------------------------------------------------------------------------
+rev 21:  (no author) | 2003-08-13 18:59:31 -0700 (Wed, 13 Aug 2003) | 5 lines
+
+Added Documentation
+
+Some of the TMtimeout bug has been fixed, module still works flawlessly, weither or not there are still timeouts on erroring sockets has not been concluded.
+
+
+------------------------------------------------------------------------
+rev 20:  (no author) | 2003-08-13 17:47:42 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+Bumped up PATCH level
+
+------------------------------------------------------------------------
+rev 19:  (no author) | 2003-08-13 17:47:03 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+Changed TODO, Added some comments to TCPMulti or somecrap I dont remember, added MANIFEST.SKIP for version generation.
+
+------------------------------------------------------------------------
+rev 18:  (no author) | 2003-08-13 17:30:50 -0700 (Wed, 13 Aug 2003) | 3 lines
+
+Added pocoscan.pl, proof of concept and proof of working code.  Its probably not the best example to provide since it is in fact a proxy scanner, but whatever it execercises all features of the module and works perfectly, maintains a specific number of concurrent connections, and is indefinately more efficient than the ::Client::TCP version of the same code [ I suppose I should add that, I will after cleaning it up a little ].  With ::Client::TCP I could run about 50 concurrent connections without crashing my laptop...with ::Client::TCPMulti I can run about 450...wee!
+
+
+------------------------------------------------------------------------
+rev 17:  (no author) | 2003-08-13 17:28:32 -0700 (Wed, 13 Aug 2003) | 6 lines
+
+Tons of bug fixes!
+
+TONS!
+
+Fixed almost everything, although some parts of the code are relying on error checking in order to work properly, this is inappropriate.  Will be fixed soon.  I actually think that some of the problems that have extra error checking have in fact been fixed but I'm not yet comfortable with removing the error checking.  
+
+------------------------------------------------------------------------
+rev 16:  (no author) | 2003-08-13 11:12:40 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+
+
+------------------------------------------------------------------------
+rev 15:  (no author) | 2003-08-13 01:36:32 -0700 (Wed, 13 Aug 2003) | 3 lines
+
+Added TODO
+
+
+------------------------------------------------------------------------
+rev 14:  (no author) | 2003-08-13 01:35:42 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+Added Automatic File Listing interacting with SVN in makefile
+
+------------------------------------------------------------------------
+rev 13:  (no author) | 2003-08-13 01:18:31 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+Added Tests
+
+------------------------------------------------------------------------
+rev 12:  (no author) | 2003-08-13 01:17:34 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+
+
+------------------------------------------------------------------------
+rev 11:  (no author) | 2003-08-13 01:15:15 -0700 (Wed, 13 Aug 2003) | 3 lines
+
+Added Makefile and crap
+
+
+------------------------------------------------------------------------
+rev 10:  (no author) | 2003-08-13 01:01:56 -0700 (Wed, 13 Aug 2003) | 13 lines
+
+Added all kinds of crap,
+$_[CHEAP] element dynamically appends
+no more $_[HEAP] editing
+
+Added new methods, made connection-specific heap also have filter and event
+methods that let you redefine UserCode as well as Wheel Filters.
+
+Reworked flushed stuff..
+
+Added a bunch of documentation [ but not nearly enough ]
+
+Lookin good :)
+
+------------------------------------------------------------------------
+rev 9:  (no author) | 2003-08-12 01:45:32 -0700 (Tue, 12 Aug 2003) | 5 lines
+
+Started and outlined most of module.
+Opted for Direct Sub Dereferencing instead of POE::Kernel->call.
+
+Should be slick, coming along fine -- Document and Complete tomarrow morning?  Hopefully.
+
+------------------------------------------------------------------------
+rev 8:  tag | 2003-08-11 19:16:25 -0700 (Mon, 11 Aug 2003) | 3 lines
+
+Started POE::Component::Client::TCPMulti Branch appropriate POE module
+- Project is Scanner/Mailer
+
+------------------------------------------------------------------------
