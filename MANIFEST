@@ -1,4 +1,5 @@
 CHANGES
+examples/pocoscan-0.1.tgz
 examples/pocoscan.pl
 lib/POE/Component/Client/TCPMulti.otl
 lib/POE/Component/Client/TCPMulti.pm
@@ -8,4 +9,5 @@ MANIFEST			This list of files
 MANIFEST.SKIP
 META.yml
 t/01_use.t
+t/post_echo.t
 TODO

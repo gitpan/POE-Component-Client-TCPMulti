@@ -27,14 +27,17 @@ WriteMakefile
     ABSTRACT     => 'POE component for High Connectivity TCP Clients',
     VERSION_FROM => 'lib/POE/Component/Client/TCPMulti.pm',
 
-#    PM           => 
-#    { 'lib/POE/Component/Client/TCPMulti.pm' => '$(INST_LIBDIR)/lib/POE/Component/Client/TCPMulti.pm' },
+#   PM           => 
+#   { 'lib/POE/Component/Client/TCPMulti.pm' => '$(INST_LIBDIR)/lib/POE/Component/Client/TCPMulti.pm' },
 #	MAN3PODS	 =>
 #	{ 'TCPMulti.pod' => '$(INST_MAN3DIR)/POE::Component::Client::TCPMulti' },
 
 	PMLIBDIRS	 => ['lib'], # This is to make the autopodfinder shit work.
 
-    PREREQ_PM    => { POE      => 0.11 },
+    PREREQ_PM    => { 
+        POE      => 0.11, 
+    },
+
     dist         =>
     { DIST_DEFAULT => "tardist document",
 	  COMPRESS   => 'gzip -9f',

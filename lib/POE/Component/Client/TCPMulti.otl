@@ -356,6 +356,10 @@ CONNECTION HEAP
 	| 
 	| The logic behind this being that you can access the connection heap in
 	| the postback state the exact same way you normally would ($_[CHEAP]).
+	| Incase this hasn't made sense to you yet, CHEAP is a compile time
+	| constant with the value of -1, so $_[CHEAP] will always be the last
+	| element of @_, but it wont automatically exist in events that were not
+	| routed by this component.
 BUGS
 | Currently none that I know of.  Please contact the author if you find one.
 TODO
