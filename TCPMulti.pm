@@ -26,235 +26,228 @@ use POE qw( Kernel
 use Carp qw( carp croak );
 
 
-*VERSION = \0.008_004;
+*VERSION = \0.009_001;
 
-our $VERSION;  # To please strict with my constant. 
+our $VERSION;
 our $DEBUG = 0;
 
-my ($Code, $UserCode, %Heap);
-
-#-Init--------------------------------------------------------------------------
-$Code = {
-    _start      => sub {
-        $_[KERNEL]->alias_set( $UserCode->{Alias} ) 
-            if defined $UserCode->{Alias};
-
-        $UserCode->{UserStates}->{_start}->(@_)
-            if ref $UserCode->{UserStates}->{_start} eq "CODE";
-    },
-
-    _child      => sub {
-        $UserCode->{states}->{_child}->(@_)
-            if ref $UserCode->{UserStates}->{_child} eq "CODE";
-    },
-
-    _stop       => sub {
-        $UserCode->{UserStates}->{_stop}->(@_)
-            if ref $UserCode->{UserStates}->{_stop} eq "CODE";
-    },
-
-    # Reset the timeout...its gross I know
-    TMzero_alarm    => sub {
-        $_ = time - $Heap{$_[0]}->{TM_STAMP};
-        $_[KERNEL]->alarm_adjust($Heap{$_[0]}->{TM_ALARM}, $_);
-        $Heap{$_[0]}->{TM_STAMP} = time;
-    },
-
-    #-Connection States---------------------------------------------------------
-    # Connect to the next available proxy
-    connect         => sub {	
-
-        my $server = POE::Wheel::SocketFactory->new
-            ( RemoteAddress => $_[ARG0],
-              RemotePort    => $_[ARG1],
-              BindAddress   => $_[ARG2],
-              BindPort      => $_[ARG3],
-              SuccessEvent  => 'TMsuccess',
-              FailureEvent  => 'TMfailure',
-              Reuse         => 'yes',
-            );
-
-        # Store Heap Data.
-        my $id = $server->ID; 
-        $Heap{$id}->{TM_ID}     = $id;
-        $Heap{$id}->{TM_ADDR}   = $_[ARG0];
-        $Heap{$id}->{TM_PORT}   = $_[ARG1];
-        $Heap{$id}->{TM_BINDA}  = $_[ARG2];
-        $Heap{$id}->{TM_BINDP}  = $_[ARG3];
-        $Heap{$id}->{TM_RUNNING}++;
-
-        # Wheel Reference
-        $Heap{$id}->{TM_SERVER} = $server;
-
-        # Create Alarm
-        $Heap{$id}->{TM_STAMP}  = time;
-        $Heap{$id}->{TM_ALARM}  = $_[KERNEL]->alarm_set
-            ( TMtimeout => time + $UserCode->{Timeout}, $id);
-        
-        bless $Heap{$id}, "POE::Component::Client::TCPMulti::CHEAP";
-
-        $#_++;
-        $_[CHEAP] = $Heap{$id};
-        $UserCode->{Initialize}->(@_);
-
-        printf "%d: Connecting %s:%d \n", $id, $_[ARG0], $_[ARG1] if $DEBUG;
-    }, 
-
-    # Got success, force destruction of SocketFactory and create Readwrite Wheel
-    TMsuccess       => sub {
-        $Heap{$_[ARG3]}->{TM_SERVER} = POE::Wheel::ReadWrite->new
-            ( Handle        => $_[ARG0],
-              Driver        => POE::Driver::SysRW->new(BlockSize => 4096),
-              Filter        => $UserCode->{Filter}->new
-                                ( @{ $UserCode->{FilterArgs} } ),
-              InputEvent    => 'TMincoming',
-              ErrorEvent    => 'TMerror',
-              FlushedEvent  => 'TMflushed' );
-
-        # Transfer entire heap (including wheel), reinstate TM_ID
-        my $id = $Heap{$_[ARG3]}->{TM_SERVER}->ID;
-        $Heap{$id} = delete $Heap{$_[ARG3]};
-        $Heap{$id}->{TM_ID} = $id;
-
-        # Delete the alarm and create a new one with the right ID 
-        $_[KERNEL]->alarm_remove( delete $Heap{$id}->{TM_ALARM} );
-        $Heap{$id}->{TM_ALARM}  = $_[KERNEL]->alarm_set
-            ( TMtimeout => time + $UserCode->{Timeout}, $id);
-
-        $_[ARG4]  = $id;
-        $#_++;
-        $_[CHEAP] = $Heap{$id};
-        $UserCode->{SuccessEvent}->(@_);
-
-        printf "%d: Connection Successful ID %d\n", $_[ARG3], $id if $DEBUG; 
-    },
-
-    #-IO States-----------------------------------------------------------------
-    # This is just so we can queue up our sockwrites while we're parsing data
-    send        => sub {
-        if (defined $Heap{$_[ARG0]}->{TM_SERVER}) {
-            $Heap{$_[ARG0]}->{TM_SERVER}->put($_[ARG1]);
-        } 
-        else {
-            carp sprintf "Attempted to send to invalid socket %d\n", $_[ARG0];
-        }
-    },
-
-    # Mail Socket Input Handler
-    TMincoming  => sub {
-        $#_++;
-        $_[CHEAP] = $Heap{$_[ARG1]};
-        return unless $_[CHEAP]->{TM_RUNNING};
-
-        $UserCode->{InputEvent}->(@_);
-    },
-
-    #-Error States--------------------------------------------------------------
-    # I could have called all of these by one name...just separating thoughts
-    # Also, I needed to use call for error states so the alarm would be removed
-    # before it could go off.  Duplicate removal calls happend during debugging.
-
-    TMfailure   => sub {
-        if ($Heap{$_[ARG3]}->{TM_RUNNING}) {
-            printf "%d: Disconnected - Failed\n", $_[ARG3] if $DEBUG;
-
-            $#_++;
-            $_[CHEAP] = $Heap{$_[ARG3]};
-            $UserCode->{FailureEvent}->(@_);
-
-            delete $_[CHEAP];
-            delete $Heap{$_[ARG3]}->{TM_SERVER};
-
-            $_[ARG0] = $_[ARG3];
-            $Code->{shutdown}->(@_);
-        }
-    },
-
-    TMerror     => sub { 
-        if ($Heap{$_[ARG3]}->{TM_RUNNING}) {
-            printf "%d: Disconnected - Error\n", $_[ARG3] if $DEBUG;
-
-            $#_++;
-            $_[CHEAP] = $Heap{$_[ARG3]};
-            $UserCode->{ErrorEvent}->(@_);
-
-            delete $_[CHEAP];
-            delete $Heap{$_[ARG3]}->{TM_SERVER};
-
-            $_[ARG0] = $_[ARG3];
-            $Code->{shutdown}->(@_);
-        }
-    }, 
-
-    # Occsaionally TMtimeout is being called after the connection errors,
-    # thats what the extra check on TM_RUNNING is for, as well as in the
-    # other error states, just to ensure there is no problem
-    TMtimeout   => sub { 
-        if ($Heap{$_[ARG0]}->{TM_RUNNING}) {
-            printf "%d: Disconnected - Timeout\n", $_[ARG0] if $DEBUG;
-
-            $#_++;
-            $_[CHEAP] = $Heap{$_[ARG0]};
-            $UserCode->{TimeoutEvent}->(@_);
-
-            delete $_[CHEAP];
-            delete $Heap{$_[ARG0]}->{TM_SERVER};
-
-            $Code->{shutdown}->(@_);
-        }
-    },
-
-    # Shutdown... push onto queue if not sent, delete driver (or wait for flush)
-    shutdown	=> sub {
-        if ($Heap{$_[ARG0]}->{TM_RUNNING}) {
-            # Remove Alarm
-            $_[KERNEL]->alarm_remove ( $Heap{$_[ARG0]}->{TM_ALARM} );	
-
-            $Heap{$_[ARG0]}->{TM_RUNNING} = 0;
-            delete $Heap{$_[ARG0]}->{TM_ALARM};
-        }
-
-        if (defined $Heap{$_[ARG0]}->{TM_SERVER}) {
-            if ($Heap{$_[ARG0]}->{TM_SERVER}->can("get_driver_out_octets")) {
-                unless ($Heap{$_[ARG0]}->{TM_SERVER}->get_driver_out_octets) {
-                    printf "%d: Disconnected - Closed\n", $_[ARG0] if $DEBUG;
-
-                    $#_++;
-                    $_[CHEAP] = $Heap{$_[ARG0]};
-                    $UserCode->{Disconnected}->(@_);
-                    
-                    # Blow shit up
-                    delete $_[CHEAP];
-                    delete $Heap{$_[ARG0]};
-
-                }
-
-                # Its either gone, or we want to wait for a clean shutdown.
-                return;
-            } 
-        }
-
-        delete $Heap{$_[ARG0]};
-    },
-
-    # Flush - our socket is empty - Direct call is faster and fits reqs.
-    TMflushed   => sub {
-        unless ($Heap{$_[ARG0]}->{TM_RUNNING}) {
-            delete $Heap{$_[ARG0]};
-        } 
-        else {
-#            $Code->{TMzero_alarm}->(@_);
-        }
-    },
-
-    # Shutdown quick, clean and gracefull. 
-    die         => sub {
-        $_[KERNEL]->yield(shutdown => $_) for keys %Heap;
-    },
-}; 
-
 sub new {
-    shift;
+    shift if $_[0] eq "POE::Component::Client::TCPMulti";
+    my ($Code, $UserCode, %Heap);
+
+    #-Init----------------------------------------------------------------------
+    $Code = {
+        _start      => sub {
+            $_[KERNEL]->alias_set( $UserCode->{Alias} ) 
+                if defined $UserCode->{Alias};
+    
+            $UserCode->{UserStates}->{_start}->(@_)
+                if ref $UserCode->{UserStates}->{_start} eq "CODE";
+        },
+    
+        _child      => sub {
+            $UserCode->{states}->{_child}->(@_)
+                if ref $UserCode->{UserStates}->{_child} eq "CODE";
+        },
+    
+        _stop       => sub {
+            $UserCode->{UserStates}->{_stop}->(@_)
+                if ref $UserCode->{UserStates}->{_stop} eq "CODE";
+        },
+    
+        # Reset the timeout...its gross I know
+        TMzero_alarm    => sub {
+            $_ = time - $Heap{$_[0]}{TM_STAMP};
+            $_[KERNEL]->alarm_adjust($Heap{$_[0]}->{TM_ALARM}, $_);
+            $Heap{$_[0]}->{TM_STAMP} = time;
+        },
+    
+        #-Connection States-----------------------------------------------------
+        # Connect to the next available proxy
+        connect         => sub {	
+    
+            my $server = POE::Wheel::SocketFactory->new
+                ( RemoteAddress => $_[ARG0],
+                  RemotePort    => $_[ARG1],
+                  BindAddress   => $_[ARG2],
+                  BindPort      => $_[ARG3],
+                  SuccessEvent  => 'TMsuccess',
+                  FailureEvent  => 'TMfailure',
+                  Reuse         => 'yes',
+                );
+    
+            # Store Heap Data.
+            my $id = $server->ID; 
+            $Heap{$id}{TM_ID}     = $id;
+            $Heap{$id}{TM_ADDR}   = $_[ARG0];
+            $Heap{$id}{TM_PORT}   = $_[ARG1];
+            $Heap{$id}{TM_BINDA}  = $_[ARG2];
+            $Heap{$id}{TM_BINDP}  = $_[ARG3];
+            $Heap{$id}{TM_RUNNING}++;
+    
+            # Wheel Reference
+            $Heap{$id}{TM_SERVER} = $server;
+    
+            # Create Alarm
+            $Heap{$id}{TM_STAMP}  = time;
+            $Heap{$id}{TM_ALARM}  = $_[KERNEL]->alarm_set
+                ( TMtimeout => time + $UserCode->{Timeout}, $id);
+            
+            bless $Heap{$id}, "POE::Component::Client::TCPMulti::CHEAP";
+    
+            $#_++;
+            $_[CHEAP] = $Heap{$id};
+            $UserCode->{Initialize}->(@_);
+    
+            printf "%d: Connecting %s:%d \n", $id, $_[ARG0], $_[ARG1] if $DEBUG;
+        }, 
+    
+        TMsuccess       => sub {
+            $Heap{$_[ARG3]}->{TM_SERVER} = POE::Wheel::ReadWrite->new
+                ( Handle        => $_[ARG0],
+                  Driver        => POE::Driver::SysRW->new(BlockSize => 4096),
+                  Filter        => $UserCode->{Filter}->new
+                                    ( @{ $UserCode->{FilterArgs} } ),
+                  InputEvent    => 'TMincoming',
+                  ErrorEvent    => 'TMerror',
+                  FlushedEvent  => 'TMflushed' );
+    
+            # Transfer entire heap (including wheel), reinstate TM_ID
+            my $id = $Heap{$_[ARG3]}{TM_SERVER}->ID;
+            $Heap{$id} = delete $Heap{$_[ARG3]};
+            $Heap{$id}->{TM_ID} = $id;
+    
+            # Delete the alarm and create a new one with the right ID 
+            $_[KERNEL]->alarm_remove( delete $Heap{$id}{TM_ALARM} );
+            $Heap{$id}->{TM_ALARM}  = $_[KERNEL]->alarm_set
+                ( TMtimeout => time + $UserCode->{Timeout}, $id);
+    
+            $_[ARG4]  = $id;
+            $#_++;
+            $_[CHEAP] = $Heap{$id};
+            $UserCode->{SuccessEvent}->(@_);
+    
+            printf "%d: Connection Successful ID %d\n", $_[ARG3], $id if $DEBUG; 
+        },
+    
+        #-IO States-------------------------------------------------------------
+        # This is just so we can queue up our sockwrites while we're parsing.
+        # Just incase we let get too lagged up, we're gonna ignore any improper
+        # posts to the send state.
+        send        => sub {
+            if (defined $Heap{$_[ARG0]}{TM_SERVER}) {
+                $Heap{$_[ARG0]}{TM_SERVER}->put($_[ARG1]);
+            } 
+        },
+    
+        TMincoming  => sub {
+            $#_++;
+            $_[CHEAP] = $Heap{$_[ARG1]};
+            return unless $_[CHEAP]->{TM_RUNNING};
+    
+            $UserCode->{InputEvent}->(@_);
+        },
+    
+        #-Error States----------------------------------------------------------
+    
+        TMfailure   => sub {
+                printf "%d: Disconnected - Failed\n", $_[ARG3] if $DEBUG;
+    
+                $#_++;
+                $_[CHEAP] = $Heap{$_[ARG3]};
+                $UserCode->{FailureEvent}->(@_);
+    
+                delete $_[CHEAP];
+                delete $Heap{$_[ARG3]}{TM_SERVER};
+    
+                $_[ARG0] = $_[ARG3];
+                $Code->{shutdown}->(@_);
+        },
+    
+        TMerror     => sub { 
+                printf "%d: Disconnected - Error\n", $_[ARG3] if $DEBUG;
+    
+                $#_++;
+                $_[CHEAP] = $Heap{$_[ARG3]};
+                $UserCode->{ErrorEvent}->(@_);
+    
+                delete $_[CHEAP];
+                delete $Heap{$_[ARG3]}{TM_SERVER};
+    
+                $_[ARG0] = $_[ARG3];
+                $Code->{shutdown}->(@_);
+        }, 
+    
+        # Occsaionally TMtimeout is being called after the connection errors,
+        # thats what the extra check on TM_RUNNING is for, as well as in the
+        # other error states, just to ensure there is no problem.  This doesn't
+        # really happen anymore but I'm not comfortable with it yet.
+        TMtimeout   => sub { 
+            if ($Heap{$_[ARG0]}{TM_RUNNING}) {
+                printf "%d: Disconnected - Timeout\n", $_[ARG0] if $DEBUG;
+    
+                $#_++;
+                $_[CHEAP] = $Heap{$_[ARG0]};
+                $UserCode->{TimeoutEvent}->(@_);
+    
+                delete $_[CHEAP];
+                delete $Heap{$_[ARG0]}->{TM_SERVER};
+    
+                $Code->{shutdown}->(@_);
+            }
+        },
+    
+        # Shutdown... push onto queue if not sent, delete driver.
+        shutdown	=> sub {
+            if ($Heap{$_[ARG0]}{TM_RUNNING}) {
+                # Remove Alarm
+                $_[KERNEL]->alarm_remove ( $Heap{$_[ARG0]}->{TM_ALARM} );	
+    
+                $Heap{$_[ARG0]}->{TM_RUNNING} = 0;
+                delete $Heap{$_[ARG0]}->{TM_ALARM};
+            }
+    
+            if (defined $Heap{$_[ARG0]}{TM_SERVER}) {
+                if ($Heap{$_[ARG0]}{TM_SERVER}->can("get_driver_out_octets")) {
+                    unless ($Heap{$_[ARG0]}{TM_SERVER}->get_driver_out_octets) 
+                    {
+                        printf "%d: Disconnected - Closed\n", $_[ARG0] 
+                            if $DEBUG;
+    
+                        $#_++;
+                        $_[CHEAP] = $Heap{$_[ARG0]};
+                        $UserCode->{Disconnected}->(@_);
+                        
+                        # Blow shit up
+                        delete $_[CHEAP];
+                        delete $Heap{$_[ARG0]};
+                    }
+    
+                    # Its either gone, or we want to wait for a clean shutdown.
+                    return;
+                } 
+            }
+    
+            delete $Heap{$_[ARG0]};
+        },
+    
+        # Flush - our socket is empty - Direct call is faster and fits reqs.
+        TMflushed   => sub {
+            unless ($Heap{$_[ARG0]}{TM_RUNNING}) {
+                delete $Heap{$_[ARG0]};
+            } 
+            else {
+    #            $Code->{TMzero_alarm}->(@_);
+            }
+        },
+    
+        # Shutdown quick, clean and gracefull. 
+        die         => sub {
+            $_[KERNEL]->yield(shutdown => $_) for keys %Heap;
+        },
+    }; 
+    
+    
     $UserCode = { @_ };
 
     $UserCode->{$_} ||= sub {} for qw( ErrorEvent
@@ -620,17 +613,32 @@ based a $_[CHEAP] element.
 
 =back
 
+=head1 VARIABLES
+
+=over 4
+
+=item DEBUG
+
+The ``DEBUG'' variable will enable warnings for each Connect, Disonnect, Timeout
+etc.  These are indexed by Connection ID.  While you can turn on session 
+assertions, since we only use one session I've found them difficult to use for
+debugging applications written with this module.
+
+Enabling this:
+
+ use POE qw(Component::Client::TCPMulti);
+ 
+ $POE::Component::Client::TCPMulti::DEBUG++;
+
+
+=item VERSION
+
+The ``VERSION'' variable is a constant, that holds this components version
+number.
+
 =head1 BUGS
 
-Probably tons, let me know if you find any.  Currently, an occasional
-unnecessary timeout will be called on an errored connection.  These 
-timeouts are ignored by error checking code since the connection will
-no longer exist.  This should be fixed very shortly.
-
-Multiple Sessions will probably not work correctly.  This is because
-the code references provided for each session is globalized throughout
-the component's package.  So subsequent sessions would override previous
-ones.  This will eventually be fixed when I think of a good plan for how. :)
+Probably tons, let me know if you find any.
 
 =head1 AUTHOR
 

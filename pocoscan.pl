@@ -9,6 +9,7 @@ use Net::DNS;
 
 use Getopt::Std;
 use POE qw(Component::Client::TCPMulti Filter::Block);
+$POE::Component::Client::TCPMulti::DEBUG++;
 use constant CL => "\cM\cJ\cM\cJ";
 
 my %Getopts = ( t => 100,
@@ -170,6 +171,7 @@ POE::Component::Client::TCPMulti->new
 
         print " Word!  Lets go\r";
 
+        $_[HEAP]->{Running}++;
         $_[KERNEL]->call(Main => "verbose") unless $Opt{Verbose};
     },
     verbose => sub {
@@ -180,11 +182,14 @@ POE::Component::Client::TCPMulti->new
                 ">",
                 " " x (60 - int $pos), $pos;
         
-        $_[KERNEL]->delay(verbose => 1);
+        $_[KERNEL]->delay(verbose => 0.5) if $_[HEAP]->{Running};
     },
     _end => sub {
         close PROXIES;
         close VERIFIED;
+
+        $_[HEAP]->{Running} = 0;
+        $_[KERNEL]->call(Main => "verbose");
     },
   }
 );
