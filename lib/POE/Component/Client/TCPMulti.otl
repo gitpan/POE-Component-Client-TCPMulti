@@ -208,10 +208,17 @@ METHODS
 | session, and is utilized by the connect state (See INTERNAL STATES, below) for
 | constructing its connection wheels.  The purpose of publicizing this method
 | is to allow connection settings to be set during connection construction.
-	connect
+	connect MANY_OPTIONS
 	| The connect method takes a list of name and value pairs (hash) as its
 	| argument.  The following pairs will be used, and all others will be
 	| ignored
+	| 
+	| Since TCPMulti has been redesigned so there can be multiple TCPMulti
+	| sessions, the connect method must be called from within a state in the
+	| TCPMulti session you wish to bind your connection to.  If you are not in
+	| a TCPMulti session, you will experience undefined behavior.
+	|
+	| The connect method implements the connect interface state.
 	- RemoteAddress
 	| The RemoteAddress parameter expects a single argument, a string which
 	| describes the hostname or address in which to make the outgoing
@@ -246,16 +253,25 @@ INTERNAL STATES
 | They are used as part of the API, for performing tasks that were handled in
 | the constructor of ::Client::TCP, as well as a few which are predefined for
 | convenience.
-	connect
+	connect ADDRESS, PORT
+	connect ADDRESS, PORT, BIND_ADDRESS
+	connect ADDRESS, PORT, BIND_ADDRESS, BIND_PORT
+	connect C_HEAP_REF, ADDRESS, PORT
+	connect C_HEAP_REF, ADDRESS, PORT, BIND_ADDRESS
+	connect C_HEAP_REF, ADDRESS, PORT, BIND_ADDRESS, BIND_PORT
 	| The "connect" state creates a new connection to the specified remote
 	| address and port, using the optionally specified local address and port.
 	| It can be posted to, yielded, or called just as a normal inline state
 	| would be.
-	send
+	|
+	| If the first arguement is a reference, then it will be treated as the
+	| heap for the connection.  This way you can pre-propigate heaps with
+	| specific information for tracking the connection.
+	send CONNECTION_ID
 	| The "send" state appends data to a connections queue for sending.  It is
 	| almost exactly the same as the "send" state used in the POE Cookbook.  It
 	| takes a connection id, and data as arguements.
-	shutdown
+	shutdown CONNECTION_ID
 	| The "shutdown" state attempts to close a connection gracefully.  It is
 	| the same as the "shutdown" state for ::Client::TCP.  It takes a
 	| connection id as an argument, and marks the connection inactive, waits
@@ -365,7 +381,7 @@ BUGS
 TODO
 | Classical inter-session communication (postbacks/event registering) is being
 | considered as an alternative interface.  However this would hinder
-| perforance.
+| perforance considerably.
 THANKS
 - Rocco Caputo
 | Rocco provided a tremendous amount of insight when making various decisions
@@ -374,5 +390,8 @@ THANKS
 | Matt found the most fundemental design flaw when it came to production use of
 | this module thats been discovered yet, and offered some suggestions on how to
 | approach addressing the issue.
+LICENSE
+| This module is released under the BSD Compatible BEERWARE license.  See the
+| source code for more details.
 AUTHOR
 | Scott McCoy (tag@cpan.org)

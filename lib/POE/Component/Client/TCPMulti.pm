@@ -37,7 +37,7 @@ use POE qw( Kernel
 
 use Carp qw( carp croak );
 
-*VERSION = \0.050;
+*VERSION = \0.0501;
 
 our $VERSION;
 BEGIN { 
@@ -185,7 +185,12 @@ sub create {
         #   connect:        Open new connection {{{
 
         # Connect to the next available proxy
-        connect         => sub {	
+        connect         => sub {
+            my $cheap;
+            if (ref $_[ARG0] eq "HASH" || ref $_[ARG0] eq "ARRAY") {
+                $cheap = splice @_, ARG0, 1;
+            }
+
             my ($address, $port, $bindaddress, $bindport) = @_[ARG0..ARG3];
 
             unless (defined $address) {
@@ -200,6 +205,7 @@ sub create {
                   BindAddress   => $bindaddress,
                   BindPort      => $bindport,
                   Timeout       => $UserCode{ConnectTimeout},
+                  Heap          => $cheap,
                 );
 
             $UserCode{Initialize}->(@_);
