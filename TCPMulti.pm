@@ -26,7 +26,7 @@ use POE qw( Kernel
 use Carp qw( carp croak );
 
 
-*VERSION = \0.008_003;
+*VERSION = \0.008_004;
 
 our $VERSION;  # To please strict with my constant. 
 our $DEBUG = 0;
@@ -492,6 +492,51 @@ from the connection.  The default is 30 seconds.
 
 Alias takes a string as a parameter, which will be the alias for the session
 this component creates.  (See L<POE::Session>) 
+
+=back
+
+=head1 INLINE STATES
+
+This component defines a number of inline states which cannot be overridden.
+They are used as part of the API, for performing tasks that were handled in
+the constructor of ::Client::TCP, as well as a few which are predefined for
+convenience.
+
+=over 2
+
+=item connect
+
+The "connect" state creates a new connection to the specified remote address
+and port, using the optionally specified local address and port.  It can be
+posted to, yielded, or called just as a normal inline state would be.  The
+syntax for such would be something like:
+
+ $_[KERNEL]->yield(connect => $ip, $port, $BindIP, $BindPort);
+ where $BindIP and $BindPort are optional.
+
+=item send
+
+The "send" state appends data to a connections queue for sending.  It is
+almost exactly the same as the "send" state used in the POE Cookbook.  It
+takes a connection id, and data as an arguement.  The suggested syntax for
+it would be like:
+
+ $_[KERNEL]->yield(send => $_[CHEAP]->ID, "some data");
+
+=item shutdown
+
+The "shutdown" state attempts to close a connection gracefully.  It is the
+same as the "shutdown" state for ::Client::TCP.  It takes a
+connection id as an arguement, the suggest syntax is something like:
+
+ $_[KERNEL]->yield(shutdown => $_[CHEAP]->ID);
+
+=item die
+
+The "die" state attempts to close all open connections gracefully, ending the
+session.  It takes no arguements:
+
+ $_[KERNEL]->yield("die");
 
 =back
 
