@@ -37,13 +37,16 @@ use POE qw( Kernel
 
 use Carp qw( carp croak );
 
-*VERSION = \0.0501;
+*VERSION = \0.052;
 
 our $VERSION;
 BEGIN { 
     unless (defined &DEBUG) {
-        use constant DEBUG => 0;
-    }   
+        constant->import(DEBUG => 0);
+    }
+    else {
+        print "TCPMulti: DEBUG MODE ENABLED";
+    }
 }
 
 # Heap is now package global.  This is fine, each wheel throughout the POE
@@ -177,7 +180,7 @@ sub create {
 
             $UserCode{SuccessEvent}->(@_);
     
-            printf '%d: Successfull Connection %s:%d\n', $new_id,
+            printf '%d == Successfull Connection %s:%d\n', $new_id,
                 @{ $Heap{$new_id} }{qw( -ADDR -PORT )} if DEBUG;
         },
     
@@ -220,6 +223,10 @@ sub create {
             push @_, $Heap{$_[ARG1]};
             return unless $_[CHEAP]{-RUNNING};
 
+            if (DEBUG) {
+                print "$_[ARG1] << $_[ARG0]\n";
+            }
+
             if ($_[CHEAP]{-TIMEOUT}) {
                 $_[KERNEL]->delay_adjust
                     ( $_[CHEAP]{-ALARM}, $_[CHEAP]{-TIMEOUT} );
@@ -238,6 +245,9 @@ sub create {
                     @_[CALLER_FILE, CALLER_LINE];
             }
             elsif (defined $Heap{$_[ARG0]}{-SERVER}) {
+                if (DEBUG) {
+                    print "$_[ARG0] >> $_[ARG1]\n";
+                }
                 $Heap{$_[ARG0]}{-SERVER}->put( @_[ARG1 .. $#_] );
             } 
         },
@@ -248,13 +258,15 @@ sub create {
         #   -failure:       Handle Connection Failure (Internal) {{{
     
         -failure   => sub {
-            printf "%d: Disconnected - Failed\n", $_[ARG3] if DEBUG;
+            printf "%d !! Disconnected - Failed (%s)\n", $_[ARG3], $_[ARG2] 
+                if DEBUG;
 
             push @_, $Heap{$_[ARG3]};
             $UserCode{FailureEvent}->(@_);
 
-            delete $_[CHEAP];
-            delete $Heap{$_[ARG3]}{-SERVER};
+#           Redundant ( This is done in shutdown )
+#            delete $_[CHEAP];
+#            delete $Heap{$_[ARG3]}{-SERVER};
 
             $_[ARG0] = $_[ARG3];
             $Code->{shutdown}->(@_);
@@ -264,14 +276,15 @@ sub create {
         #   -error:         Handle Connection Error (Internal) {{{
 
         -error     => sub { 
-            printf "%d: Disconnected - Error\n", $_[ARG3] if DEBUG;
+            printf "%d !! Disconnected - Error\n", $_[ARG3] if DEBUG;
     
             $#_++;
             $_[CHEAP] = $Heap{$_[ARG3]};
             $UserCode{ErrorEvent}->(@_);
     
-            delete $_[CHEAP];
-            delete $Heap{$_[ARG3]}{-SERVER};
+#           Redundant
+#            delete $_[CHEAP];
+#            delete $Heap{$_[ARG3]}{-SERVER};
     
             $_[ARG0] = $_[ARG3];
             $Code->{shutdown}->(@_);
@@ -284,19 +297,21 @@ sub create {
         # other error states, just to ensure there is no problem.  This doesn't
         # really happen anymore but I'm not comfortable with it yet.
 
-        -timeout   => sub { 
-            if ($Heap{$_[ARG0]}{-RUNNING}) {
-                printf "%d: Disconnected - Timeout\n", $_[ARG0] if DEBUG;
+        -timeout   => sub {
+# 20050330: timeouts aren't getting cleaned up!            
+#            if ($Heap{$_[ARG0]}{-RUNNING}) {
+                printf "%d ** Disconnected - Timeout\n", $_[ARG0] if DEBUG;
     
                 $#_++;
                 $_[CHEAP] = $Heap{$_[ARG0]};
                 $UserCode{TimeoutEvent}->(@_);
     
-                delete $_[CHEAP];
-                delete $Heap{$_[ARG0]}->{-SERVER};
+#               Redundant
+#                delete $_[CHEAP];
+#                delete $Heap{$_[ARG0]}->{-SERVER};
     
                 $Code->{shutdown}->(@_);
-            }
+#            }
         },
     
         #   }}}
@@ -333,9 +348,13 @@ sub create {
             if (defined $Heap{$_[ARG0]}{-SERVER}) {
                 if ($Heap{$_[ARG0]}{-SERVER}->can("get_driver_out_octets")) {
                     unless ($Heap{$_[ARG0]}{-SERVER}->get_driver_out_octets) {
-                        printf "%d: Disconnected - Closed\n", $_[ARG0] 
+                        printf "%d -- Disconnected - Closed\n", $_[ARG0] 
                             if DEBUG;
     
+                        unless (exists $Heap{$_[ARG0]}) {
+                            die "$_[ARG0]: Socket doesn't exist?";
+                        }
+
                         push @_, $Heap{$_[ARG0]};
                         $UserCode{Disconnected}->(@_);
                         
@@ -349,8 +368,14 @@ sub create {
                     return;
                 } 
             }
+            else {
+                # XXX Just a test
+                delete $_[CHEAP];
+                delete $Heap{$_[ARG0]};
+            }
     
-            delete $Heap{$_[ARG0]};
+# Don't do this unless we're flushed...
+# delete $Heap{$_[ARG0]};
         },
     
         #   }}}
@@ -420,7 +445,7 @@ sub connect {
         $Heap{$id}{-ALARM} = 0;
     }
 
-    printf "%d: Connecting %s:%d \n", $id, @{ $Heap{$id} }{qw( -ADDR -PORT )}
+    printf "%d ++ Connecting %s:%d \n", $id, @{ $Heap{$id} }{qw( -ADDR -PORT )}
         if DEBUG;
 
     return $Heap{$id};
