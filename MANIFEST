@@ -4,8 +4,6 @@ MANIFEST.SKIP
 Makefile.PL
 TCPMulti.pm
 TODO
-debug.output
 pocoscan.pl
-proxies.txt
+portscan.pl
 t/01_use.t
-verified.txt

@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#if $_[HEAP]->{Running}i!/usr/bin/perl
 # Proxy Scanner Proof of concept.
 # tag@cpan.org
 
@@ -9,7 +9,7 @@ use Net::DNS;
 
 use Getopt::Std;
 use POE qw(Component::Client::TCPMulti Filter::Block);
-$POE::Component::Client::TCPMulti::DEBUG++;
+#$POE::Component::Client::TCPMulti::DEBUG++;
 use constant CL => "\cM\cJ\cM\cJ";
 
 my %Getopts = ( t => 100,
@@ -17,6 +17,7 @@ my %Getopts = ( t => 100,
                 p => "proxies.txt",
                 v => "verified.txt",
                 x => 30,
+                d => 0,
                 b => undef );
 my %Opt;
 my @Queue;
@@ -24,11 +25,13 @@ my @Ports;
 my $Server;
 my $EOF;
 
-getopts "Vv:p:s:x:t:b:", \%Getopts;
+getopts "dVv:p:s:x:t:b:", \%Getopts;
 
 # Legibility ROCKS!
-@Opt{qw( Verified Proxies Server Verbose
-         Timeout  Threads BindIP )} = delete @Getopts{qw( v p s V x t b )};
+@Opt{qw( Verified Proxies Server Verbose Timeout 
+        Threads BindIP Debug )} = delete @Getopts{qw( v p s V x t b d )};
+
+$POE::Component::Client::TCPMulti::DEBUG++ if $Opt{Debug};
 
 # Event States------------------------------------------------------------------
 sub nextProxy () { 
@@ -111,7 +114,10 @@ sub SuccessHandle {
 
 sub ErrorHandle {
     my $Next;
-    return unless $Next = nextProxy;
+
+    unless ($Next = nextProxy) {
+        return $_[HEAP]->{Running} = 0;
+    }
 
     $_[KERNEL]->yield( connect => $Next->[0], $Next->[1], $Opt{BindIP} );
 }
@@ -177,12 +183,14 @@ POE::Component::Client::TCPMulti->new
     verbose => sub {
         my $pos;
         
-        printf " [ %s%s%s ] %0.2f\r", 
-                "=" x ($pos = ((tell(PROXIES) / $EOF) * 60)),
-                ">",
-                " " x (60 - int $pos), $pos;
-        
-        $_[KERNEL]->delay(verbose => 0.5) if $_[HEAP]->{Running};
+        if ($_[HEAP]->{Running}) {
+            printf " [ %s%s%s ] %0.2f\r", 
+            "=" x ($pos = ((tell(PROXIES) / $EOF) * 60)),
+            ">",
+            " " x (60 - int $pos), $pos;
+
+            $_[KERNEL]->delay(verbose => 0.5);
+        }
     },
     _end => sub {
         close PROXIES;

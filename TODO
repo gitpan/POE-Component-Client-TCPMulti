@@ -1,11 +1,1 @@
-
-- Sometimes TMtimeout is being called after a connection errors, this means
-  that errors aren't always deleting the timeout alarm.   This behavior has
-  been bypassed by error checking to ensure events are only processed if they
-  are valid, but this behavior should be fixed since it causes extra events
-  to be called, and our current focus is supposedly on EFFICIENCY, so thats
-  bad :)
-  
-- Add Test goddamnit.
-
-- Finish Documenting
+- Add some real tests.

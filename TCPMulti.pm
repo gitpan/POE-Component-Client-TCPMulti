@@ -1,3 +1,4 @@
+# vim600: set ts=4 sw=4 tw=80 expandtab nowrap noai cin foldmethod=marker:
 # A Highconnectivity replacement for PoCo::Client::TCP
 # -----------------------------------------------------------------------------
 # "THE BEER-WARE LICENSE" (Revision 43) borrowed from FreeBSD's jail.c:
@@ -25,8 +26,7 @@ use POE qw( Kernel
 
 use Carp qw( carp croak );
 
-
-*VERSION = \0.009_001;
+*VERSION = \0.010_001;
 
 our $VERSION;
 our $DEBUG = 0;
@@ -35,8 +35,38 @@ sub new {
     shift if $_[0] eq "POE::Component::Client::TCPMulti";
     my ($Code, $UserCode, %Heap);
 
-    #-Init----------------------------------------------------------------------
+    $UserCode = { @_ };
+
+    $UserCode->{$_} ||= sub {} for qw( ErrorEvent
+                                       InputEvent
+                                       Initialize
+                                       Disconnected
+                                       SuccessEvent
+                                       FlushedEvent
+                                       FailureEvent
+                                       TimeoutEvent );
+
+    $UserCode->{Timeout}        ||= 30;
+    $UserCode->{Filter}         ||= "POE::Filter::Line";
+    $UserCode->{FilterArgs}     ||= undef;
+    $UserCode->{options}        ||= {};
+    $UserCode->{package_states} ||= [];
+    $UserCode->{object_states}  ||= [];
+
+    if (ref $UserCode->{Filter} eq "ARRAY") {
+        my @FilterData = @{ delete $UserCode->{Filter} };
+        $UserCode->{Filter} = shift @FilterData;
+        $UserCode->{FilterArgs} = [ @FilterData ];
+    }
+
+    @{ $UserCode->{UserStates} }{ qw( _start _stop _child ) } =
+        delete @{ $UserCode->{inline_states} }{ qw( _start _stop _child ) };
+
+    # Internal States {{{
     $Code = {
+        # Session Events {{{
+        #   _start:     Session Start {{{
+
         _start      => sub {
             $_[KERNEL]->alias_set( $UserCode->{Alias} ) 
                 if defined $UserCode->{Alias};
@@ -45,16 +75,26 @@ sub new {
                 if ref $UserCode->{UserStates}->{_start} eq "CODE";
         },
     
+        #   }}}
+        #   _child:     Session Child {{{
+
         _child      => sub {
             $UserCode->{states}->{_child}->(@_)
                 if ref $UserCode->{UserStates}->{_child} eq "CODE";
         },
     
+        #   }}}
+        #   _stop:      Session End {{{
+
         _stop       => sub {
             $UserCode->{UserStates}->{_stop}->(@_)
                 if ref $UserCode->{UserStates}->{_stop} eq "CODE";
         },
     
+        #   }}}
+        # }}}
+        # Alarm Handler (Internal) {{{
+
         # Reset the timeout...its gross I know
         TMzero_alarm    => sub {
             $_ = time - $Heap{$_[0]}{TM_STAMP};
@@ -62,46 +102,10 @@ sub new {
             $Heap{$_[0]}->{TM_STAMP} = time;
         },
     
-        #-Connection States-----------------------------------------------------
-        # Connect to the next available proxy
-        connect         => sub {	
-    
-            my $server = POE::Wheel::SocketFactory->new
-                ( RemoteAddress => $_[ARG0],
-                  RemotePort    => $_[ARG1],
-                  BindAddress   => $_[ARG2],
-                  BindPort      => $_[ARG3],
-                  SuccessEvent  => 'TMsuccess',
-                  FailureEvent  => 'TMfailure',
-                  Reuse         => 'yes',
-                );
-    
-            # Store Heap Data.
-            my $id = $server->ID; 
-            $Heap{$id}{TM_ID}     = $id;
-            $Heap{$id}{TM_ADDR}   = $_[ARG0];
-            $Heap{$id}{TM_PORT}   = $_[ARG1];
-            $Heap{$id}{TM_BINDA}  = $_[ARG2];
-            $Heap{$id}{TM_BINDP}  = $_[ARG3];
-            $Heap{$id}{TM_RUNNING}++;
-    
-            # Wheel Reference
-            $Heap{$id}{TM_SERVER} = $server;
-    
-            # Create Alarm
-            $Heap{$id}{TM_STAMP}  = time;
-            $Heap{$id}{TM_ALARM}  = $_[KERNEL]->alarm_set
-                ( TMtimeout => time + $UserCode->{Timeout}, $id);
-            
-            bless $Heap{$id}, "POE::Component::Client::TCPMulti::CHEAP";
-    
-            $#_++;
-            $_[CHEAP] = $Heap{$id};
-            $UserCode->{Initialize}->(@_);
-    
-            printf "%d: Connecting %s:%d \n", $id, $_[ARG0], $_[ARG1] if $DEBUG;
-        }, 
-    
+        # }}}
+        # Connection States {{{
+        #   TMsuccess:  Connection was successful (Internal) {{{
+
         TMsuccess       => sub {
             $Heap{$_[ARG3]}->{TM_SERVER} = POE::Wheel::ReadWrite->new
                 ( Handle        => $_[ARG0],
@@ -130,15 +134,58 @@ sub new {
             printf "%d: Connection Successful ID %d\n", $_[ARG3], $id if $DEBUG; 
         },
     
-        #-IO States-------------------------------------------------------------
-        # This is just so we can queue up our sockwrites while we're parsing.
-        # Just incase we let get too lagged up, we're gonna ignore any improper
-        # posts to the send state.
-        send        => sub {
-            if (defined $Heap{$_[ARG0]}{TM_SERVER}) {
-                $Heap{$_[ARG0]}{TM_SERVER}->put($_[ARG1]);
-            } 
-        },
+        #   }}}
+        #   connect:    Open new connection {{{
+
+        # Connect to the next available proxy
+        connect         => sub {	
+            unless (defined $_[ARG1]) {
+                return printf STDERR   
+                    "connect called without address or port, %s: line %d\n",
+                    @_[CALLER_FILE, CALLER_LINE];
+            }
+            
+            my $server = POE::Wheel::SocketFactory->new
+                ( RemoteAddress => $_[ARG0],
+                  RemotePort    => $_[ARG1],
+                  BindAddress   => $_[ARG2],
+                  BindPort      => $_[ARG3],
+                  SuccessEvent  => 'TMsuccess',
+                  FailureEvent  => 'TMfailure',
+                  Reuse         => 'yes',
+                );
+    
+            # Store Heap Data.
+            my $id = $server->ID; 
+            $Heap{$id}{TM_ID}     = $id;
+            $Heap{$id}{TM_ADDR}   = $_[ARG0];
+            $Heap{$id}{TM_PORT}   = $_[ARG1];
+            $Heap{$id}{TM_BINDA}  = $_[ARG2];
+            $Heap{$id}{TM_BINDP}  = $_[ARG3];
+            $Heap{$id}{TM_RUNNING}++;
+    
+            # Wheel Reference
+            $Heap{$id}{TM_SERVER} = $server;
+    
+            # Create Alarm
+            $Heap{$id}{TM_STAMP}  = time;
+
+            $Heap{$id}{TM_ALARM}  = $_[KERNEL]->alarm_set
+                ( TMtimeout => time + $UserCode->{Timeout}, $id);
+            
+            bless $Heap{$id}, "POE::Component::Client::TCPMulti::CHEAP";
+    
+            $#_++;
+            $_[CHEAP] = $Heap{$id};
+            $UserCode->{Initialize}->(@_);
+    
+            printf "%d: Connecting %s:%d \n", $id, $_[ARG0], $_[ARG1] if $DEBUG;
+        }, 
+    
+        #   }}}
+        # }}}
+        # IO States {{{
+        #   TMincoming:     Handling recieved data (Internal) {{{
     
         TMincoming  => sub {
             $#_++;
@@ -147,8 +194,25 @@ sub new {
     
             $UserCode->{InputEvent}->(@_);
         },
-    
-        #-Error States----------------------------------------------------------
+
+        #   }}}
+        #   send:           Send Data {{{
+
+        send        => sub {
+            unless (defined $_[ARG1]) {
+                return printf STDERR  
+                    "send called without socket or data %s: line %d\n",
+                    @_[CALLER_FILE, CALLER_LINE];
+            }
+            elsif (defined $Heap{$_[ARG0]}{TM_SERVER}) {
+                $Heap{$_[ARG0]}{TM_SERVER}->put($_[ARG1]);
+            } 
+        },
+
+        #   }}}
+        # }}}
+        # Error States {{{
+        #   TMfailure:      Handle Connection Failure (Internal) {{{
     
         TMfailure   => sub {
                 printf "%d: Disconnected - Failed\n", $_[ARG3] if $DEBUG;
@@ -164,6 +228,9 @@ sub new {
                 $Code->{shutdown}->(@_);
         },
     
+        #   }}}
+        #   TMerror:        Handle Connection Error (Internal) {{{
+
         TMerror     => sub { 
                 printf "%d: Disconnected - Error\n", $_[ARG3] if $DEBUG;
     
@@ -178,10 +245,13 @@ sub new {
                 $Code->{shutdown}->(@_);
         }, 
     
+        #   }}}
+        #   TMtimeout:      Handle Connection Timeout (Internal) {{{
         # Occsaionally TMtimeout is being called after the connection errors,
         # thats what the extra check on TM_RUNNING is for, as well as in the
         # other error states, just to ensure there is no problem.  This doesn't
         # really happen anymore but I'm not comfortable with it yet.
+
         TMtimeout   => sub { 
             if ($Heap{$_[ARG0]}{TM_RUNNING}) {
                 printf "%d: Disconnected - Timeout\n", $_[ARG0] if $DEBUG;
@@ -197,8 +267,28 @@ sub new {
             }
         },
     
+        #   }}}
+        # }}}
+        # Closing States {{{
+        #   TMflushed:      Empty Socket (Internal) {{{
+
+        # Flush - our socket is empty - Direct call is faster and fits reqs.
+        TMflushed   => sub {
+            unless ($Heap{$_[ARG0]}{TM_RUNNING}) {
+                delete $Heap{$_[ARG0]};
+            } 
+        },
+    
+        #   }}}
+        #   shutdown:       Handle Socket Shutdown {{{
+
         # Shutdown... push onto queue if not sent, delete driver.
         shutdown	=> sub {
+            unless (defined $_[ARG0]) {
+                return printf STDERR  
+                    "shutdown called without CHEAP id %s: line %d\n",
+                    @_[CALLER_FILE, CALLER_LINE];
+            }
             if ($Heap{$_[ARG0]}{TM_RUNNING}) {
                 # Remove Alarm
                 $_[KERNEL]->alarm_remove ( $Heap{$_[ARG0]}->{TM_ALARM} );	
@@ -231,50 +321,19 @@ sub new {
             delete $Heap{$_[ARG0]};
         },
     
-        # Flush - our socket is empty - Direct call is faster and fits reqs.
-        TMflushed   => sub {
-            unless ($Heap{$_[ARG0]}{TM_RUNNING}) {
-                delete $Heap{$_[ARG0]};
-            } 
-            else {
-    #            $Code->{TMzero_alarm}->(@_);
-            }
-        },
-    
+        #   }}}
+        #   die:            Gracefully close all sockets {{{
         # Shutdown quick, clean and gracefull. 
+
         die         => sub {
             $_[KERNEL]->yield(shutdown => $_) for keys %Heap;
         },
+
+        #   }}}
+        # }}}
     }; 
+    # }}}
     
-    
-    $UserCode = { @_ };
-
-    $UserCode->{$_} ||= sub {} for qw( ErrorEvent
-                                       InputEvent
-                                       Initialize
-                                       Disconnected
-                                       SuccessEvent
-                                       FlushedEvent
-                                       FailureEvent
-                                       TimeoutEvent );
-
-    $UserCode->{Timeout} ||= 30;
-    $UserCode->{Filter}  ||= "POE::Filter::Line";
-    $UserCode->{FilterArgs} = undef;
-    $UserCode->{options} ||= {};
-    $UserCode->{package_states} ||= [];
-    $UserCode->{object_states}  ||= [];
-
-    if (ref $UserCode->{Filter} eq "ARRAY") {
-        my @FilterData = @{ delete $UserCode->{Filter} };
-        $UserCode->{Filter} = shift @FilterData;
-        $UserCode->{FilterArgs} = [ @FilterData ];
-    }
-
-    @{ $UserCode->{UserStates} }{ qw( _start _end _child ) } =
-        delete @{ $UserCode->{inline_states} }{ qw( _start _end _child ) };
-
     POE::Session->create
         ( inline_states => { %{ delete $UserCode->{inline_states} }, %$Code },
           object_states     => delete $UserCode->{object_states},
@@ -304,14 +363,15 @@ sub filter {
     shift->{TM_SERVER}->set_input_filter( shift->new(@_) );
 }
 
-
-1;
-
-#-User POD----------------------------------------------------------------------
+# Documentation {{{
 
 =head1 NAME
 
  POE::Component::Client::TCPMulti
+
+=cut
+
+#   SYNOPSIS {{{
 
 =head1 SYNOPSIS
 
@@ -345,6 +405,10 @@ sub filter {
 
  );
 
+=cut
+
+# }}}
+#   DESCRIPTION {{{
 
 =head1 DESCRIPTION
 
@@ -368,6 +432,11 @@ really *that* much more complex.
 
 Over all I tried as hard as possible to make crossing your application over
 from POE::Component::Client::TCP as simple as possible.
+
+=cut
+
+#   }}}
+#   CONSTRCUTOR PARAMETERS {{{
 
 =head1 CONSTRUCTOR PARAMETERS 
 
@@ -442,9 +511,9 @@ than temporarily, it is very likely to not exist in future versions.
 =item inline_states
 
 inline_states will actually create inline states with 3 exceptions, _start,
-_child and _end inline states, and any inline state named "connect", "shutdown",
-"send", or "die" will be overwritten.  However, _start, _child, or _end inline
-states will be called during _start, _child, and _end appropriately, only
+_child and _stop inline states, and any inline state named "connect", "shutdown",
+"send", or "die" will be overwritten.  However, _start, _child, or _stop inline
+states will be called during _start, _child, and _stop appropriately, only
 prior to ::Client::TCPMulti completing its own internal tasks for these times.
 I cant really see any reason for using _child within the session this component
 creates, but you never know :)  If you're trying to figure out why your _start
@@ -487,6 +556,11 @@ Alias takes a string as a parameter, which will be the alias for the session
 this component creates.  (See L<POE::Session>) 
 
 =back
+
+=cut
+
+#   }}}
+#   INLINE STATES {{{
 
 =head1 INLINE STATES
 
@@ -532,6 +606,11 @@ session.  It takes no arguements:
  $_[KERNEL]->yield("die");
 
 =back
+
+=cut
+
+#   }}}
+#   OPTIMIZATIONS {{{
 
 =head1 OPTIMIZATIONS
 
@@ -613,6 +692,11 @@ based a $_[CHEAP] element.
 
 =back
 
+=cut
+
+#   }}}
+#   VARIABLES {{{
+
 =head1 VARIABLES
 
 =over 4
@@ -638,7 +722,7 @@ number.
 
 =head1 BUGS
 
-Probably tons, let me know if you find any.
+Probably some, let me know if you find any.
 
 =head1 AUTHOR
 
@@ -657,3 +741,8 @@ This software is released under the BEERWARE license, a free software license.
 The End
 
 =cut
+
+#   }}}
+# }}}
+
+1;

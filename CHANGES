@@ -1,4 +1,39 @@
 ------------------------------------------------------------------------
+rev 172:  tag | 2003-09-11 15:01:06 -0700 (Thu, 11 Sep 2003) | 12 lines
+
+Added portscan.pl, a cleaner, better written proof of concept.
+
+Added some error checking on inline states (reporting line/file of
+caller).        
+
+Moved UserCode processes to begining and fixed a bug in the FilterArgs
+constructor option (it was always being overriden :-/)
+
+Fixed a bug with user _stop, where I had _end stuck everywhere for some
+stupid reason (its _stop, not _end!) I even had _end in the documentation
+(updated that)...
+
+------------------------------------------------------------------------
+rev 165:  tag | 2003-09-05 16:57:26 -0700 (Fri, 05 Sep 2003) | 2 lines
+
+Altered todo -- mostly checking commit (Does it require a user? ack)
+
+------------------------------------------------------------------------
+rev 164:  root | 2003-09-05 16:56:14 -0700 (Fri, 05 Sep 2003) | 2 lines
+
+Moving POE-Component Tree.
+
+------------------------------------------------------------------------
+rev 54:  (no author) | 2003-08-26 21:17:50 -0700 (Tue, 26 Aug 2003) | 7 lines
+
+
+Fixed up pocoscan.pl
+
+Added some documentation changes.  Removed silly error checking.  Quieted the stopped
+send state events.  Bumped up version, and uploaded to pause.
+
+
+------------------------------------------------------------------------
 rev 33:  (no author) | 2003-08-21 12:28:27 -0700 (Thu, 21 Aug 2003) | 3 lines
 
 Added simple test
