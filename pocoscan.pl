@@ -21,6 +21,7 @@ my %Opt;
 my @Queue;
 my @Ports;
 my $Server;
+my $EOF;
 
 getopts "Vv:p:s:x:t:b:", \%Getopts;
 
@@ -142,8 +143,11 @@ POE::Component::Client::TCPMulti->new
   Disconnected  => \&ErrorHandle,
 
   SuccessEvent  => \&SuccessHandle,
+  Alias         => "Main",
   inline_states => {
     _start => sub {
+        print " Hi...I need to get ready.\r";
+
         open PROXIES, "<", $Opt{Proxies} or die "$Opt{Proxies}: $!";
         open VERIFIED, ">", $Opt{Verified};
 
@@ -155,12 +159,28 @@ POE::Component::Client::TCPMulti->new
         }
 
         @Ports = keys %Portlist;
+
+        $EOF = tell PROXIES;
         seek PROXIES, 0, 0;
 
         ErrorHandle @_ for 1..$Opt{Threads};
 
         select VERIFIED; $|++;
-        select STDOUT;
+        select STDOUT;   $|++;
+
+        print " Word!  Lets go\r";
+
+        $_[KERNEL]->call(Main => "verbose") unless $Opt{Verbose};
+    },
+    verbose => sub {
+        my $pos;
+        
+        printf " [ %s%s%s ] %0.2f\r", 
+                "=" x ($pos = ((tell(PROXIES) / $EOF) * 60)),
+                ">",
+                " " x (60 - int $pos), $pos;
+        
+        $_[KERNEL]->delay(verbose => 1);
     },
     _end => sub {
         close PROXIES;

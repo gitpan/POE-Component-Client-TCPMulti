@@ -1,4 +1,16 @@
 ------------------------------------------------------------------------
+rev 23:  (no author) | 2003-08-13 22:57:12 -0700 (Wed, 13 Aug 2003) | 2 lines
+
+Bumped up Revision number...forgot to do that in the last commit :-/
+
+------------------------------------------------------------------------
+rev 22:  (no author) | 2003-08-13 22:55:44 -0700 (Wed, 13 Aug 2003) | 4 lines
+
+Fixed bug in Success State, as assigning $_[ARG4] over $_[CHEAP] because $#_ had just been incremented, and $_[CHEAP] was in the $_[ARG4] position.
+
+Fixed up pocoscan.pl a little and gave it a nice little verbose output.
+
+------------------------------------------------------------------------
 rev 21:  (no author) | 2003-08-13 18:59:31 -0700 (Wed, 13 Aug 2003) | 5 lines
 
 Added Documentation

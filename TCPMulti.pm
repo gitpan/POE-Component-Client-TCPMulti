@@ -26,7 +26,7 @@ use POE qw( Kernel
 use Carp qw( carp croak );
 
 
-*VERSION = \0.008_001;
+*VERSION = \0.008_003;
 
 our $VERSION;  # To please strict with my constant. 
 our $DEBUG = 0;
@@ -121,9 +121,9 @@ $Code = {
         $Heap{$id}->{TM_ALARM}  = $_[KERNEL]->alarm_set
             ( TMtimeout => time + $UserCode->{Timeout}, $id);
 
+        $_[ARG4]  = $id;
         $#_++;
         $_[CHEAP] = $Heap{$id};
-        $_[ARG4]  = $id;
         $UserCode->{SuccessEvent}->(@_);
 
         printf "%d: Connection Successful ID %d\n", $_[ARG3], $id if $DEBUG; 
@@ -581,6 +581,11 @@ Probably tons, let me know if you find any.  Currently, an occasional
 unnecessary timeout will be called on an errored connection.  These 
 timeouts are ignored by error checking code since the connection will
 no longer exist.  This should be fixed very shortly.
+
+Multiple Sessions will probably not work correctly.  This is because
+the code references provided for each session is globalized throughout
+the component's package.  So subsequent sessions would override previous
+ones.  This will eventually be fixed when I think of a good plan for how. :)
 
 =head1 AUTHOR
 
