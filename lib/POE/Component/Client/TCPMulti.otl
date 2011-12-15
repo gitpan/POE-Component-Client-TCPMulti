@@ -80,15 +80,16 @@ SYNOPSIS
 || 
 DESCRIPTION
 | POE::Component::Client::TCPMulti is a very lightweight, highly optimized
-| component designed for large numbers of simultanious outgoing connections.
+| component designed for large numbers of simultaneous outgoing connections.
 | The major advantage to this module over POE::Component::Client::TCP is that
-| it runs in a single session, reguardless of the number of outgoing
-| simultanious connections.  I have found this in fact to use considerable less
+| it runs in a single session, regardless of the number of outgoing
+| simultaneous connections.  I have found this in fact to use considerable less
 | overhead than POE::Component::Client::TCP in high traffic.  The disadvantage
-| lies mearly in the API complexity over POE::Component::Client::TCP.  
+| is that it has a significantly more complex API than
+| POE::Component::Client::TCP.  
 |
 | It is in fact due to this added API complexity that I decided to create a
-| seperate module, rather than altering POE::Component::Client::TCP [ or
+| separate module, rather than altering POE::Component::Client::TCP [ or
 | coaxing Rocco to let me ].  POE::Component::Client::TCP is a great module and
 | this is not designed to completely replace it.  It is however designed as a
 | solution for extremely high traffic situations when the overhead of an
@@ -223,16 +224,16 @@ METHODS
 	- RemoteAddress
 	| The RemoteAddress parameter expects a single argument, a string which
 	| describes the hostname or address in which to make the outgoing
-	| connection to.  This arguement is required.
+	| connection to.  This argument is required.
 	- RemotePort
 	| The RemotePort parameter expects a number, which will specify the port to
-	| connect to on the remote host.  This arguement is required.
+	| connect to on the remote host.  This argument is required.
 	- BindAddress
 	| The BindAddress parameter describes the local address to bind for the
 	| outgoing connection.  This argument is optional.
 	- BindPort
 	| The BindPort parameter describes the local port to bind for the outgoing
-	| connection.  This arguement is optional.
+	| connection.  This argument is optional.
 	- ConnectTimeout
 	| The ConnectTimeout paramter expects a numerical value in seconds, which
 	| will be the value used as the timeout for this connection attempt.  Once
@@ -245,7 +246,7 @@ METHODS
 	| sends no data for that number of seconds the connection will be closed
 	| and a TimeoutError will be dispatched.
 	- Heap
-	| The Heap arguement expects a hash reference, which will prepropigate the
+	| The Heap argument expects a hash reference, which will prepropigate the
 	| Connection Heap for the connection being constructed.  This can be used
 	| to provide the data needed to process the outgoing connection before the
 	| connection is even attempted.
@@ -265,13 +266,13 @@ INTERNAL STATES
 	| It can be posted to, yielded, or called just as a normal inline state
 	| would be.
 	|
-	| If the first arguement is a reference, then it will be treated as the
+	| If the first argument is a reference, then it will be treated as the
 	| heap for the connection.  This way you can pre-propigate heaps with
 	| specific information for tracking the connection.
 	send CONNECTION_ID
 	| The "send" state appends data to a connections queue for sending.  It is
 	| almost exactly the same as the "send" state used in the POE Cookbook.  It
-	| takes a connection id, and data as arguements.
+	| takes a connection id, and data as arguments.
 	shutdown CONNECTION_ID
 	| The "shutdown" state attempts to close a connection gracefully.  It is
 	| the same as the "shutdown" state for ::Client::TCP.  It takes a
@@ -297,7 +298,7 @@ OPTIMIZATIONS
 	| Alot of testing has proven this to actually create a faster runtime
 	| without reducing responsive time of POE.  In fact, in most instances it
 	| was greatly increased since less work was put in the event queue
-	| uneccesarily. 
+	| unnecessarily. 
 CONNECTION HEAP
 | Each event dispatched from this component includes an addition to the normal
 | event parameters (think @_), called the connection heap (or CHEAP).  A
@@ -349,9 +350,9 @@ CONNECTION HEAP
 		| This method will set the output filter for the current connection.
 		- timeout
 		| The timeout method adjusts the timeout of the current connection and
-		| resets its alarm.  It expects one arguement, an integer, which is the
-		| value the timeout should be set to in seconds.  If the arguement
-		| provided is zero, the timeout is disabled.  If no arguement is given,
+		| resets its alarm.  It expects one argument, an integer, which is the
+		| value the timeout should be set to in seconds.  If the argument
+		| provided is zero, the timeout is disabled.  If no argument is given,
 		| then the current timeout setting is returned.  The timeout for the
 		| current status of the connection is set.  For example, if this method
 		| is called in the Initialize event, then the timeout for the
@@ -382,13 +383,13 @@ BUGS
 TODO
 | Classical inter-session communication (postbacks/event registering) is being
 | considered as an alternative interface.  However this would hinder
-| perforance considerably.
+| performance considerably.
 THANKS
 - Rocco Caputo
 | Rocco provided a tremendous amount of insight when making various decisions
 | about this modules design.
 - Matt Cashner
-| Matt found the most fundemental design flaw when it came to production use of
+| Matt found the most fundamental design flaw when it came to production use of
 | this module thats been discovered yet, and offered some suggestions on how to
 | approach addressing the issue.
 LICENSE

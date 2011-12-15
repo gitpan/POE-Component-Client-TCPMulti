@@ -11,15 +11,10 @@ open CHANGES, ">>CHANGES" and close CHANGES;
 sub MY::postamble { 
 	q(
 document:
-	$(NOECHO) $(PERLRUN) "-MFile::Find"                       \
-	 -le 'find { wanted => sub { if (m/otl$$/) { \
-	 		my $$pod = $$_; \
-			$$pod =~ s/otl/pod/; \
-			print "Converting $$File::Find::name to $$pod"; \
-			system("otl2pod $$_ > $$pod"); \
-		} } }, "lib";'
+	 $(NOECHO) $(PERLRUN) "-MFile::Find" -le 'find sub { if (m/otl$$/) { my $$pod = $$_; $$pod =~ s/otl/pod/g; system "otl2pod $$_ > $$pod" } }, "lib"'
+
 upload: document dist
-	cpan-upload -mailto tag@cpan.org -user tag $(DISTNAME)-$(VERSION).tar.gz
+	cpan-upload $(DISTNAME)-$(VERSION).tar.gz
 	 );
 }
 

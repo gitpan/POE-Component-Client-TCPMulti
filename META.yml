@@ -1,11 +1,22 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         POE-Component-Client-TCPMulti
-version:      0.0521
-version_from: lib/POE/Component/Client/TCPMulti.pm
-installdirs:  site
+--- #YAML:1.0
+name:               POE-Component-Client-TCPMulti
+version:            0.0524
+abstract:           POE component for High Connectivity TCP Clients
+author:
+    - Scott S. McCoy (tag@cpan.org)
+license:            unknown
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-    POE:                           0.11
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.17
+    POE:  0.11
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.55_02
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

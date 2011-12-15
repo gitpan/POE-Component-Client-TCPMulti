@@ -27,7 +27,7 @@ sub import {
 }
 
 
-use UNIVERSAL qw( isa );
+use UNIVERSAL;
 use POE qw( Kernel
             Session
             Driver::SysRW
@@ -37,7 +37,7 @@ use POE qw( Kernel
 
 use Carp qw( carp croak );
 
-*VERSION = \0.0521;
+*VERSION = \0.0524;
 
 our $VERSION;
 BEGIN { 
@@ -194,6 +194,10 @@ sub create {
                     $kernel->delay_adjust
                         ( $cheap->{-ALARM}, $cheap->{-TIMEOUT} );
                 }
+                else {
+                    $cheap->{-ALARM} = $kernel->delay_set
+                        ( -timeout => $cheap->{-TIMEOUT}, $cheap->{-ID} );
+                }
             }
             # We should have an alarm ID -> maybe we're not storing it.
             elsif ($cheap->{-ALARM}) {
@@ -297,7 +301,8 @@ sub create {
                 if DEBUG;
 
             push @_, $heap{$_[ARG3]};
-            $user_code{FailureEvent}->(@_);
+            # di ko alam kahit needed ito
+            $user_code{FailureEvent}->(@_) if $_[CHEAP]{-RUNNING};
 
 #           Redundant ( This is done in shutdown )
 #            delete $_[CHEAP];
@@ -314,7 +319,7 @@ sub create {
             printf "%d !! Disconnected - Error\n", $_[ARG3] if DEBUG;
     
             push @_, $heap{$_[ARG3]};
-            $user_code{ErrorEvent}->(@_);
+            $user_code{ErrorEvent}->(@_) if $_[CHEAP]{-RUNNING};
     
 #           Redundant
 #            delete $_[CHEAP];
